@@ -6,6 +6,26 @@
     "source.fixAll.eslint": "explicit"
   },
   "[prisma]": {
+    "editor.defaultFormatter": "Prisma.prisma",
     "editor.formatOnSave": true
-  }
+  },
+  "files.exclude": {
+    "**/.keep": true,
+    "**/.yarn": false,
+
+    "**/.git": true,
+    "**/.svn": true,
+    "**/.hg": true,
+    "**/CVS": true,
+    "**/.DS_Store": true,
+    "**/Thumbs.db": true,
+    "**/node_modules": true,
+
+    "**/.redwood": true,
+    "**/web/dist": true,
+    "**/api/dist": true,
+    "**/api/types": true,
+    "**/web/types": true,
+  },
+  "explorer.compactFolders": false,
 }

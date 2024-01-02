@@ -14,11 +14,68 @@ generator client {
   binaryTargets = "native"
 }
 
-// Define your own datamodels here and run `yarn redwood prisma migrate dev`
-// to create migrations for them and apply to your dev DB.
-// TODO: Please remove the following example:
-model UserExample {
-  id    Int     @id @default(autoincrement())
-  email String  @unique
-  name  String?
+model User {
+  id                  Int          @id @default(autoincrement())
+  email               String       @unique
+  name                String?
+  hashedPassword      String
+  salt                String
+  resetToken          String?
+  resetTokenExpiresAt DateTime?
+  Memberships         Membership[]
+}
+
+model Membership {
+  id             Int          @id @default(autoincrement())
+  user           User         @relation(fields: [userId], references: [id])
+  userId         Int
+  Organization   Organization @relation(fields: [organizationId], references: [id])
+  organizationId Int
+  Role           Role         @relation(fields: [roleId], references: [id])
+  roleId         Int
+
+  @@index([userId])
+  @@index([organizationId])
+  @@index([roleId])
+}
+
+model Organization {
+  id      Int          @id @default(autoincrement())
+  name    String
+  Members Membership[]
+  Posts   Post[]
+}
+
+model Role {
+  id          Int          @id @default(autoincrement())
+  name        String
+  Memberships Membership[]
+  Scopes      RoleScope[]
+}
+
+model RoleScope {
+  id      Int   @id @default(autoincrement())
+  Role    Role  @relation(fields: [roleId], references: [id])
+  roleId  Int
+  Scope   Scope @relation(fields: [scopeId], references: [id])
+  scopeId Int
+
+  @@index([roleId])
+  @@index([scopeId])
+}
+
+model Scope {
+  id    Int         @id @default(autoincrement())
+  name  String
+  Roles RoleScope[]
+}
+
+model Post {
+  id             Int          @id @default(autoincrement())
+  title          String
+  body           String
+  Organization   Organization @relation(fields: [organizationId], references: [id])
+  organizationId Int
+
+  @@index([organizationId])
 }
