@@ -6,9 +6,8 @@ export const schema = gql`
   }
 
   type Query {
-    posts(orgId: Int!): [Post!]! @requireAuth @requireOrg(input: "orgId")
+    posts(orgId: Int!): [Post!]! @requireOrg(input: "orgId")
     post(postId: Int!, orgId: Int!): Post
-      @requireAuth
       @requireScope(input: "orgId", scope: "read:post")
   }
 
@@ -24,13 +23,10 @@ export const schema = gql`
 
   type Mutation {
     createPost(orgId: Int!, input: CreatePostInput!): Post!
-      @requireAuth
       @requireScope(input: "orgId", scope: "create:post")
     updatePost(postId: Int!, orgId: Int!, input: UpdatePostInput!): Post!
-      @requireAuth
       @requireScope(input: "orgId", scope: "update:post")
     deletePost(postId: Int!, orgId: Int!): Post!
-      @requireAuth
       @requireScope(input: "orgId", scope: "delete:post")
   }
 `

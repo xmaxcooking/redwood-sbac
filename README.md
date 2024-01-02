@@ -1,122 +1,278 @@
-# README
+# Multi-Tenant Scope-Based-Access-Control (SBAC) on RedwoodJS Proof-of-Concept
 
-Welcome to [RedwoodJS](https://redwoodjs.com)!
+Welcome to the Multi-Tenant Scope-Based-Access-Control on RedwoodJS Proof-of-Concept repository!
 
-> **Prerequisites**
->
-> - Redwood requires [Node.js](https://nodejs.org/en/) (=18.x) and [Yarn](https://yarnpkg.com/) (>=1.15)
-> - Are you on Windows? For best results, follow our [Windows development setup](https://redwoodjs.com/docs/how-to/windows-development-setup) guide
+This repository demonstrates a proof-of-concept implementation of SBAC using custom directives `@requireOrg` and `@requireScope` in RedwoodJS. The directives check user memberships and role scopes at a field-level on top of GraphQL SDLs.
 
-Start by installing dependencies:
+## Prerequisites
 
-```
+- Redwood requires [Node.js](https://nodejs.org/en/) (>=18.x) and [Yarn](https://yarnpkg.com/) (>=1.15)
+
+## Getting Started
+
+To get started with the repository, clone it and install the dependencies:
+
+```bash
+git clone https://github.com/xmaxcooking/redwood-sbac.git
+cd your_repository
 yarn install
 ```
 
-Then start the development server:
+After the installation process, migrate the database and start the development server:
 
+```bash
+yarn rw prisma migrate dev
+yarn rw dev
 ```
-yarn redwood dev
-```
 
-Your browser should automatically open to [http://localhost:8910](http://localhost:8910) where you'll see the Welcome Page, which links out to many great resources.
+Your server should now be running at http://localhost:8910.
 
-> **The Redwood CLI**
->
-> Congratulations on running your first Redwood CLI command! From dev to deploy, the CLI is with you the whole way. And there's quite a few commands at your disposal:
->
-> ```
-> yarn redwood --help
-> ```
->
-> For all the details, see the [CLI reference](https://redwoodjs.com/docs/cli-commands).
+## The `model` in detail
 
-## Prisma and the database
+Features:
+- A user can be a member of many organizations
+- A member of an organization has a role
+- A role has many scopes
+- Posts are created for an organization
 
-Redwood wouldn't be a full-stack framework without a database. It all starts with the schema. Open the [`schema.prisma`](api/db/schema.prisma) file in `api/db` and replace the `UserExample` model with the following `Post` model:
+Notes:
+- When using with a postresql provider the scope names would be enums. this is written for sqlite for the purpose of demonstration.
 
 ```prisma
+model User {
+  id                  Int          @id @default(autoincrement())
+  email               String       @unique
+  name                String?
+  hashedPassword      String
+  salt                String
+  resetToken          String?
+  resetTokenExpiresAt DateTime?
+  Memberships         Membership[]
+}
+
+model Membership {
+  id             Int          @id @default(autoincrement())
+  user           User         @relation(fields: [userId], references: [id])
+  userId         Int
+  Organization   Organization @relation(fields: [organizationId], references: [id])
+  organizationId Int
+  Role           Role         @relation(fields: [roleId], references: [id])
+  roleId         Int
+
+  @@index([userId])
+  @@index([organizationId])
+  @@index([roleId])
+}
+
+model Organization {
+  id      Int          @id @default(autoincrement())
+  name    String
+  Members Membership[]
+  Posts   Post[]
+}
+
+model Role {
+  id          Int          @id @default(autoincrement())
+  name        String
+  Memberships Membership[]
+  Scopes      RoleScope[]
+}
+
+model RoleScope {
+  id      Int   @id @default(autoincrement())
+  Role    Role  @relation(fields: [roleId], references: [id])
+  roleId  Int
+  Scope   Scope @relation(fields: [scopeId], references: [id])
+  scopeId Int
+
+  @@index([roleId])
+  @@index([scopeId])
+}
+
+model Scope {
+  id    Int         @id @default(autoincrement())
+  name  String
+  Roles RoleScope[]
+}
+
 model Post {
-  id        Int      @id @default(autoincrement())
-  title     String
-  body      String
-  createdAt DateTime @default(now())
+  id             Int          @id @default(autoincrement())
+  title          String
+  body           String
+  Organization   Organization @relation(fields: [organizationId], references: [id])
+  organizationId Int
+
+  @@index([organizationId])
 }
 ```
 
-Redwood uses [Prisma](https://www.prisma.io/), a next-gen Node.js and TypeScript ORM, to talk to the database. Prisma's schema offers a declarative way of defining your app's data models. And Prisma [Migrate](https://www.prisma.io/migrate) uses that schema to make database migrations hassle-free:
+## The `getCurrentUser`
 
-```
-yarn rw prisma migrate dev
+The getCurrentUser function in `src/lib/auth` has to be updated to reflect the users memberships and scopes.
+This is to minimize the additional overhead by membership or scope validations and the eventually necessary selective enabling/disabling on the web side.
 
-# ...
+```typescript
+export const getCurrentUser = async (session: Decoded) => {
+  if (!session || typeof session.id !== 'number') {
+    throw new Error('Invalid session')
+  }
 
-? Enter a name for the new migration: › create posts
-```
+  const user = await db.user.findUnique({
+    where: { id: session.id },
+    select: {
+      id: true,
+      Memberships: {
+        select: {
+          Organization: {
+            select: {
+              id: true,
+            },
+          },
+          Role: {
+            select: {
+              Scopes: {
+                select: {
+                  Scope: {
+                    select: {
+                      name: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
 
-> `rw` is short for `redwood`
-
-You'll be prompted for the name of your migration. `create posts` will do.
-
-Now let's generate everything we need to perform all the CRUD (Create, Retrieve, Update, Delete) actions on our `Post` model:
-
-```
-yarn redwood generate scaffold post
-```
-
-Navigate to [http://localhost:8910/posts/new](http://localhost:8910/posts/new), fill in the title and body, and click "Save".
-
-Did we just create a post in the database? Yup! With `yarn rw generate scaffold <model>`, Redwood created all the pages, components, and services necessary to perform all CRUD actions on our posts table.
-
-## Frontend first with Storybook
-
-Don't know what your data models look like? That's more than ok—Redwood integrates Storybook so that you can work on design without worrying about data. Mockup, build, and verify your React components, even in complete isolation from the backend:
-
-```
-yarn rw storybook
-```
-
-Seeing "Couldn't find any stories"? That's because you need a `*.stories.{tsx,jsx}` file. The Redwood CLI makes getting one easy enough—try generating a [Cell](https://redwoodjs.com/docs/cells), Redwood's data-fetching abstraction:
-
-```
-yarn rw generate cell examplePosts
-```
-
-The Storybook server should hot reload and now you'll have four stories to work with. They'll probably look a little bland since there's no styling. See if the Redwood CLI's `setup ui` command has your favorite styling library:
-
-```
-yarn rw setup ui --help
-```
-
-## Testing with Jest
-
-It'd be hard to scale from side project to startup without a few tests. Redwood fully integrates Jest with both the front- and back-ends, and makes it easy to keep your whole app covered by generating test files with all your components and services:
-
-```
-yarn rw test
+  return user
+}
 ```
 
-To make the integration even more seamless, Redwood augments Jest with database [scenarios](https://redwoodjs.com/docs/testing#scenarios)  and [GraphQL mocking](https://redwoodjs.com/docs/testing#mocking-graphql-calls).
+## The `@requireOrg` Directive
 
-## Ship it
+The `@requireOrg` directive is utilized in our GraphQL schema definitions for operations which require the user to be a member of an organization (without any scope requirements)
 
-Redwood is designed for both serverless deploy targets like Netlify and Vercel and serverful deploy targets like Render and AWS:
+Here's how it's being used in context:
 
-```
-yarn rw setup deploy --help
-```
-
-Don't go live without auth! Lock down your app with Redwood's built-in, database-backed authentication system ([dbAuth](https://redwoodjs.com/docs/authentication#self-hosted-auth-installation-and-setup)), or integrate with nearly a dozen third-party auth providers:
-
-```
-yarn rw setup auth --help
+```graphql
+  type Query {
+    posts(orgId: Int!): [Post!]! @requireOrg(input: "orgId")
+    ...
+  }
 ```
 
-## Next Steps
+## The `@requireOrg` Directive in Detail
 
-The best way to learn Redwood is by going through the comprehensive [tutorial](https://redwoodjs.com/docs/tutorial/foreword) and joining the community (via the [Discourse forum](https://community.redwoodjs.com) or the [Discord server](https://discord.gg/redwoodjs)).
+The @requireOrg directive, as used in the above context, takes one argument.
 
-## Quick Links
+- input: Specifies the context variable which should be used as the organization id for the validator
 
-- Stay updated: read [Forum announcements](https://community.redwoodjs.com/c/announcements/5), follow us on [Twitter](https://twitter.com/redwoodjs), and subscribe to the [newsletter](https://redwoodjs.com/newsletter)
-- [Learn how to contribute](https://redwoodjs.com/docs/contributing)
+This directive is validated by a function in the background which checks the currentUser for a corresponding membership entry for. Here is a brief illustration of the validation function:
+
+```typescript
+import { requireOrg as applicationRequireOrg } from 'src/lib/org'
+
+const validate: ValidatorDirectiveFunc = ({ context, directiveArgs }) => {
+  const id = Number(context.params['variables'][directiveArgs.input])
+  applicationRequireOrg({ id })
+}
+```
+
+```typescript
+import { ForbiddenError } from '@redwoodjs/graphql-server'
+
+export const hasOrg = (orgId: number) => {
+  if (!context.currentUser) return false
+  if (!context.currentUser.Memberships) return false
+  return context.currentUser.Memberships.find(
+    (m) => m.Organization.id === orgId
+  )
+}
+
+export const requireOrg = ({ id }: { id: number }) => {
+  if (id && !hasOrg(id)) {
+    throw new ForbiddenError("You don't have access to this Organization.")
+  }
+}
+```
+
+## The `@requireScope` Directive
+
+The `@requireScope` directive is utilized in our GraphQL schema definitions for operations which require the user to be a member of an organization and assigned with a role that contains the necessary scopes.
+
+Here's how it's being used in context:
+
+```graphql
+  type Mutation {
+    createPost(orgId: Int!, input: CreatePostInput!): Post!
+      @requireScope(input: "orgId", scope: "create:post")
+    updatePost(postId: Int!, orgId: Int!, input: UpdatePostInput!): Post!
+      @requireScope(input: "orgId", scope: "update:post")
+    deletePost(postId: Int!, orgId: Int!): Post!
+      @requireScope(input: "orgId", scope: "delete:post")
+  }
+```
+
+Instead of the usual:
+
+```graphql
+  type Mutation {
+    createPost(input: CreatePostInput!): Post! @requireAuth
+    updatePost(postId: Int!, input: UpdatePostInput!): Post! @requireAuth
+    deletePost(postId: Int!): Post! @requireAuth
+  }
+```
+
+### WARNING:
+Validation of CRUD Operations involving scopes require the organization id always to be passed to the graphql mutations
+if you don't want the overhead of any additional database queries.
+
+## The `@requireScope` Directive in Detail
+
+The @requireScope directive, as used in the above context, takes two arguments.
+
+- input: Specifies the context variable which should be used as the organization id for the validator
+- scope: The necessary scope of the membership role
+
+
+```typescript
+import { requireScope as applicationRequireScope } from 'src/lib/scope'
+
+const validate: ValidatorDirectiveFunc = ({ context, directiveArgs }) => {
+  const { input, scope } = directiveArgs
+  const orgId = Number(context.params['variables'][input])
+  applicationRequireScope({ orgId, scope })
+}
+```
+
+```typescript
+import { ForbiddenError } from '@redwoodjs/graphql-server'
+
+export const hasScope = (orgId: number, scope: string) => {
+  if (!context.currentUser) return false
+  if (!context.currentUser.Memberships) return false
+  return context.currentUser.Memberships.find(
+    (m) =>
+      m.Organization.id === orgId &&
+      m.Role.Scopes.find((s) => s.Scope.name === scope)
+  )
+}
+
+export const requireScope = ({
+  orgId,
+  scope,
+}: {
+  orgId: number
+  scope: string
+}) => {
+  if (orgId && scope && !hasScope(orgId, scope)) {
+    throw new ForbiddenError("You don't have access to this Resource.")
+  }
+}
+
+```
+
+## Feedback and Contributions
+This repository is a proof-of-concept and is open to suggestions and contributions. Feel free to share your thoughts or make a pull request.
