@@ -1,25 +1,36 @@
+import { AuthenticationError } from '@redwoodjs/graphql-server'
+
 /**
- * Once you are ready to add authentication to your application
- * you'll build out requireAuth() with real functionality. For
- * now we just return `true` so that the calls in services
- * have something to check against, simulating a logged
- * in user that is allowed to access that service.
+ * The name of the cookie that dbAuth sets
  *
- * See https://redwoodjs.com/docs/authentication for more info.
+ * %port% will be replaced with the port the api server is running on.
+ * If you have multiple RW apps running on the same host, you'll need to
+ * make sure they all use unique cookie names
  */
-export const isAuthenticated = () => {
-  return true
+export const cookieName = 'session_%port%'
+
+/**
+ * The user is authenticated if there is a currentUser in the context
+ *
+ * @returns {boolean} - If the currentUser is authenticated
+ */
+export const isAuthenticated = (): boolean => {
+  return !!context.currentUser
 }
 
-export const hasRole = ({ roles }) => {
-  return roles !== undefined
-}
-
-// This is used by the redwood directive
-// in ./api/src/directives/requireAuth
-
-// Roles are passed in by the requireAuth directive if you have auth setup
-// eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars
-export const requireAuth = ({ roles }) => {
-  return isAuthenticated()
+/**
+ * Use requireAuth in your services to check that a user is logged in,
+ * whether or not they are assigned a role, and optionally raise an
+ * error if they're not.
+ *
+ * @returns - If the currentUser is authenticated (and assigned one of the given roles)
+ *
+ * @throws {@link AuthenticationError} - If the currentUser is not authenticated
+ *
+ * @see https://github.com/redwoodjs/redwood/tree/main/packages/auth for examples
+ */
+export const requireAuth = () => {
+  if (!isAuthenticated()) {
+    throw new AuthenticationError("You don't have permission to do that.")
+  }
 }
