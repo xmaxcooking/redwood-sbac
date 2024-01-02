@@ -2,7 +2,7 @@
 
 Welcome to the Multi-Tenant Scope-Based-Access-Control on RedwoodJS Proof-of-Concept repository!
 
-This repository demonstrates a proof-of-concept implementation of SBAC using custom directives `@requireOrg` and `@requireScope` in RedwoodJS. The directives check user memberships and role scopes at a field-level on top of GraphQL SDLs.
+This repository demonstrates a proof-of-concept implementation of SBAC using custom directives `@requireOrg` and `@requireScope` in RedwoodJS. The directives check user memberships and role scopes at a mutation, query or field-level on top of GraphQL SDLs.
 
 ## Prerequisites
 
